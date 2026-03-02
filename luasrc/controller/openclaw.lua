@@ -152,9 +152,24 @@ function action_service_ctl()
 	elseif action == "setup" then
 		-- 先清理旧日志和状态
 		sys.exec("rm -f /tmp/openclaw-setup.log /tmp/openclaw-setup.pid /tmp/openclaw-setup.exit")
+		-- 获取用户选择的版本 (stable=指定版本, latest=最新版)
+		local version = http.formvalue("version") or ""
+		local env_prefix = ""
+		if version == "stable" then
+			-- 稳定版: 读取 openclaw-env 中定义的 OC_TESTED_VERSION
+			local tested_ver = sys.exec("grep '^OC_TESTED_VERSION=' /usr/bin/openclaw-env 2>/dev/null | cut -d'\"' -f2"):gsub("%s+", "")
+			if tested_ver ~= "" then
+				env_prefix = "OC_VERSION=" .. tested_ver .. " "
+			end
+		elseif version ~= "" and version ~= "latest" then
+			-- 校验版本号格式 (仅允许数字、点、横线、字母)
+			if version:match("^[%d%.%-a-zA-Z]+$") then
+				env_prefix = "OC_VERSION=" .. version .. " "
+			end
+		end
 		-- 后台安装，成功后自动启用并启动服务
 		-- 注: openclaw-env 脚本有 set -e，init_openclaw 中的非关键失败不应阻止启动
-		sys.exec("( /usr/bin/openclaw-env setup > /tmp/openclaw-setup.log 2>&1; RC=$?; echo $RC > /tmp/openclaw-setup.exit; if [ $RC -eq 0 ]; then uci set openclaw.main.enabled=1; uci commit openclaw; /etc/init.d/openclaw enable 2>/dev/null; sleep 1; /etc/init.d/openclaw start >> /tmp/openclaw-setup.log 2>&1; fi ) & echo $! > /tmp/openclaw-setup.pid")
+		sys.exec("( " .. env_prefix .. "/usr/bin/openclaw-env setup > /tmp/openclaw-setup.log 2>&1; RC=$?; echo $RC > /tmp/openclaw-setup.exit; if [ $RC -eq 0 ]; then uci set openclaw.main.enabled=1; uci commit openclaw; /etc/init.d/openclaw enable 2>/dev/null; sleep 1; /etc/init.d/openclaw start >> /tmp/openclaw-setup.log 2>&1; fi ) & echo $! > /tmp/openclaw-setup.pid")
 		http.prepare_content("application/json")
 		http.write_json({ status = "ok", message = "安装已启动，请查看安装日志..." })
 		return

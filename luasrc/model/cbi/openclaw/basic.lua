@@ -32,7 +32,7 @@ act.cfgvalue = function(self, section)
 
 	-- 按钮区域
 	html[#html+1] = '<div style="display:flex;gap:10px;flex-wrap:wrap;margin:10px 0;">'
-	html[#html+1] = '<button class="btn cbi-button cbi-button-apply" type="button" onclick="ocSetup()" id="btn-setup" title="下载 Node.js 并安装 OpenClaw">🚀 安装运行环境</button>'
+	html[#html+1] = '<button class="btn cbi-button cbi-button-apply" type="button" onclick="ocShowSetupDialog()" id="btn-setup" title="下载 Node.js 并安装 OpenClaw">📦 安装运行环境</button>'
 	html[#html+1] = '<button class="btn cbi-button cbi-button-action" type="button" onclick="ocServiceCtl(\'restart\')">🔄 重启服务</button>'
 	html[#html+1] = '<button class="btn cbi-button cbi-button-action" type="button" onclick="ocServiceCtl(\'stop\')">⏹️ 停止服务</button>'
 	html[#html+1] = '<button class="btn cbi-button cbi-button-action" type="button" onclick="ocCheckUpdate()" id="btn-check-update">🔍 检测升级</button>'
@@ -40,6 +40,31 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = '</div>'
 	html[#html+1] = '<div id="action-result" style="margin-top:8px;"></div>'
 	html[#html+1] = '<div id="oc-update-action" style="margin-top:8px;display:none;"></div>'
+
+	-- 版本选择对话框 (默认隐藏)
+	html[#html+1] = '<div id="oc-setup-dialog" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;">'
+	html[#html+1] = '<div style="background:#fff;border-radius:12px;padding:24px 28px;max-width:480px;width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.2);">'
+	html[#html+1] = '<h3 style="margin:0 0 16px 0;font-size:16px;color:#333;">📦 选择安装版本</h3>'
+	html[#html+1] = '<div style="display:flex;flex-direction:column;gap:12px;">'
+	-- 稳定版选项
+	html[#html+1] = '<label style="display:flex;align-items:flex-start;gap:10px;padding:14px 16px;border:2px solid #4a90d9;border-radius:8px;cursor:pointer;background:#f0f7ff;" id="oc-opt-stable">'
+	html[#html+1] = '<input type="radio" name="oc-ver-choice" value="stable" checked style="margin-top:2px;">'
+	html[#html+1] = '<div><strong style="color:#333;">✅ 稳定版 (推荐)</strong>'
+	html[#html+1] = '<div style="font-size:12px;color:#666;margin-top:4px;">版本 v' .. luci.sys.exec("sed -n 's/^OC_TESTED_VERSION=\"\\(.*\\)\"/\\1/p' /usr/bin/openclaw-env 2>/dev/null"):gsub("%s+", "") .. '，已经过完整测试，兼容性良好。</div>'
+	html[#html+1] = '</div></label>'
+	-- 最新版选项
+	html[#html+1] = '<label style="display:flex;align-items:flex-start;gap:10px;padding:14px 16px;border:2px solid #e0e0e0;border-radius:8px;cursor:pointer;background:#fff;" id="oc-opt-latest">'
+	html[#html+1] = '<input type="radio" name="oc-ver-choice" value="latest" style="margin-top:2px;">'
+	html[#html+1] = '<div><strong style="color:#333;">🆕 最新版</strong>'
+	html[#html+1] = '<div style="font-size:12px;color:#e36209;margin-top:4px;">⚠️ 安装 npm 上的最新发布版本，可能存在未经验证的兼容性问题。</div>'
+	html[#html+1] = '</div></label>'
+	html[#html+1] = '</div>'
+	-- 按钮区
+	html[#html+1] = '<div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px;">'
+	html[#html+1] = '<button class="btn cbi-button" type="button" onclick="ocCloseSetupDialog()" style="min-width:80px;">取消</button>'
+	html[#html+1] = '<button class="btn cbi-button cbi-button-apply" type="button" onclick="ocConfirmSetup()" style="min-width:80px;">开始安装</button>'
+	html[#html+1] = '</div>'
+	html[#html+1] = '</div></div>'
 
 	-- 安装日志面板 (默认隐藏)
 	html[#html+1] = '<div id="setup-log-panel" style="display:none;margin-top:12px;">'
@@ -54,9 +79,28 @@ act.cfgvalue = function(self, section)
 	-- JavaScript
 	html[#html+1] = '<script type="text/javascript">'
 
-	-- 安装运行环境 (带实时日志)
+	-- 版本选择对话框逻辑
 	html[#html+1] = 'var _setupTimer=null;'
-	html[#html+1] = 'function ocSetup(){'
+	html[#html+1] = 'function ocShowSetupDialog(){'
+	html[#html+1] = 'var dlg=document.getElementById("oc-setup-dialog");'
+	html[#html+1] = 'dlg.style.display="flex";'
+	html[#html+1] = 'var radios=document.getElementsByName("oc-ver-choice");'
+	html[#html+1] = 'for(var i=0;i<radios.length;i++){if(radios[i].value==="stable")radios[i].checked=true;}'
+	html[#html+1] = '}'
+	html[#html+1] = 'function ocCloseSetupDialog(){'
+	html[#html+1] = 'document.getElementById("oc-setup-dialog").style.display="none";'
+	html[#html+1] = '}'
+	html[#html+1] = 'function ocConfirmSetup(){'
+	html[#html+1] = 'ocCloseSetupDialog();'
+	html[#html+1] = 'var radios=document.getElementsByName("oc-ver-choice");'
+	html[#html+1] = 'var choice="stable";'
+	html[#html+1] = 'for(var i=0;i<radios.length;i++){if(radios[i].checked){choice=radios[i].value;break;}}'
+	html[#html+1] = 'var verParam=(choice==="stable")?"stable":"latest";'
+	html[#html+1] = 'ocSetup(verParam);'
+	html[#html+1] = '}'
+
+	-- 安装运行环境 (带实时日志)
+	html[#html+1] = 'function ocSetup(version){'
 	html[#html+1] = 'var btn=document.getElementById("btn-setup");'
 	html[#html+1] = 'var panel=document.getElementById("setup-log-panel");'
 	html[#html+1] = 'var logEl=document.getElementById("setup-log-content");'
@@ -67,11 +111,11 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'btn.disabled=true;btn.textContent="⏳ 安装中...";'
 	html[#html+1] = 'actionEl.textContent="";'
 	html[#html+1] = 'panel.style.display="block";'
-	html[#html+1] = 'logEl.textContent="正在启动安装...\\n";'
+	html[#html+1] = 'logEl.textContent="正在启动安装 ("+((version==="stable")?"稳定版":"最新版")+")...\\n";'
 	html[#html+1] = 'titleEl.textContent="📋 安装日志";'
 	html[#html+1] = 'statusEl.innerHTML="<span style=\\"color:#7aa2f7;\\">⏳ 安装进行中...</span>";'
 	html[#html+1] = 'resultEl.style.display="none";'
-	html[#html+1] = '(new XHR()).get("' .. ctl_url .. '?action=setup",null,function(x){'
+	html[#html+1] = '(new XHR()).get("' .. ctl_url .. '?action=setup&version="+encodeURIComponent(version),null,function(x){'
 	html[#html+1] = 'try{JSON.parse(x.responseText);}catch(e){}'
 	html[#html+1] = 'ocPollSetupLog();'
 	html[#html+1] = '});'
@@ -107,7 +151,7 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'var btn=document.getElementById("btn-setup");'
 	html[#html+1] = 'var statusEl=document.getElementById("setup-log-status");'
 	html[#html+1] = 'var resultEl=document.getElementById("setup-log-result");'
-	html[#html+1] = 'btn.disabled=false;btn.textContent="🚀 安装运行环境";'
+	html[#html+1] = 'btn.disabled=false;btn.textContent="📦 安装运行环境";'
 	html[#html+1] = 'resultEl.style.display="block";'
 	html[#html+1] = 'if(ok){'
 	html[#html+1] = 'statusEl.innerHTML="<span style=\\"color:#1a7f37;\\">✅ 安装完成</span>";'

@@ -6,10 +6,16 @@
 #   openclaw-env check     — 检查环境状态
 #   openclaw-env upgrade   — 升级 OpenClaw 到最新版
 #   openclaw-env node      — 仅下载/更新 Node.js
+# 环境变量:
+#   OC_VERSION  — 指定 OpenClaw 版本 (如 2026.3.1)，不设置则安装最新版
 # ============================================================================
 set -e
 
 NODE_VERSION="${NODE_VERSION:-22.16.0}"
+# 经过验证的 OpenClaw 稳定版本 (更新此值需同步测试)
+OC_TESTED_VERSION="2026.3.1"
+# 用户可通过 OC_VERSION 环境变量覆盖安装版本
+OC_VERSION="${OC_VERSION:-}"
 NODE_BASE="/opt/openclaw/node"
 OC_GLOBAL="/opt/openclaw/global"
 OC_DATA="/opt/openclaw/data"
@@ -187,6 +193,16 @@ install_openclaw() {
 	echo ""
 	echo "=== 安装 OpenClaw ==="
 
+	# 确定安装版本
+	local oc_pkg="openclaw"
+	if [ -n "$OC_VERSION" ]; then
+		oc_pkg="openclaw@${OC_VERSION}"
+		log_info "指定版本: v${OC_VERSION}"
+	else
+		oc_pkg="openclaw@latest"
+		log_info "安装最新版本"
+	fi
+
 	local libc_type
 	libc_type=$(detect_libc)
 
@@ -214,18 +230,18 @@ install_openclaw() {
 	local npm_ok=0
 	if [ -x "$NPM_BIN" ]; then
 		mkdir -p "$OC_GLOBAL"
-		"$NPM_BIN" install -g openclaw@latest --prefix="$OC_GLOBAL" $install_flags 2>&1 | tail -10
+		"$NPM_BIN" install -g "$oc_pkg" --prefix="$OC_GLOBAL" $install_flags 2>&1 | tail -10
 		# 检查是否安装成功
 		if [ -n "$(find_oc_entry)" ]; then
 			npm_ok=1
 		else
 			log_warn "首次安装未成功，尝试 --no-optional 模式重试..."
-			"$NPM_BIN" install -g openclaw@latest --prefix="$OC_GLOBAL" $install_flags --no-optional 2>&1 | tail -10
+			"$NPM_BIN" install -g "$oc_pkg" --prefix="$OC_GLOBAL" $install_flags --no-optional 2>&1 | tail -10
 			[ -n "$(find_oc_entry)" ] && npm_ok=1
 		fi
 	elif [ -x "$PNPM_BIN" ]; then
 		mkdir -p "$OC_GLOBAL"
-		"$PNPM_BIN" install -g openclaw@latest --prefix="$OC_GLOBAL" 2>&1 | tail -5
+		"$PNPM_BIN" install -g "$oc_pkg" --prefix="$OC_GLOBAL" 2>&1 | tail -5
 	else
 		log_error "npm 和 pnpm 均不可用"
 		exit 1
@@ -302,6 +318,11 @@ do_setup() {
 	echo ""
 	echo "  架构:       $(uname -m)"
 	echo "  Node 版本:  v${node_ver}"
+	if [ -n "$OC_VERSION" ]; then
+		echo "  OpenClaw:   v${OC_VERSION} (稳定版)"
+	else
+		echo "  OpenClaw:   最新版"
+	fi
 	echo "  安装路径:   ${NODE_BASE}"
 	echo "  数据路径:   ${OC_DATA}"
 	echo ""
