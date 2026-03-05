@@ -19,6 +19,28 @@ OC_VERSION="${OC_VERSION:-}"
 NODE_BASE="/opt/openclaw/node"
 OC_GLOBAL="/opt/openclaw/global"
 OC_DATA="/opt/openclaw/data"
+
+# ── OverlayFS 兼容性修复 ──
+# iStoreOS/OpenWrt 上 Docker 的 bind mount (/overlay/upper/opt/docker)
+# 会导致 OverlayFS 合并视图中 /opt 完全不可写 (mkdir 报 "Directory not empty")。
+# 解决方案: 将 /overlay/upper/opt bind mount 到 /opt，绕过 OverlayFS 冲突。
+_oc_fix_opt() {
+	# 如果 /opt 可正常写入，无需修复
+	if mkdir -p /opt/openclaw/.probe 2>/dev/null; then
+		rmdir /opt/openclaw/.probe 2>/dev/null
+		return 0
+	fi
+	# /opt 不可写且 overlay upper 层存在 — 执行 bind mount 修复
+	if [ -d /overlay/upper/opt ]; then
+		# 确保 upper 层有 openclaw 目录
+		mkdir -p /overlay/upper/opt/openclaw 2>/dev/null
+		# 绑定挂载 upper 层的 /opt 到合并视图的 /opt
+		mount --bind /overlay/upper/opt /opt 2>/dev/null && return 0
+	fi
+	return 1
+}
+_oc_fix_opt
+
 NODE_BIN="${NODE_BASE}/bin/node"
 NPM_BIN="${NODE_BASE}/bin/npm"
 PNPM_BIN="${OC_GLOBAL}/bin/pnpm"
@@ -37,6 +59,17 @@ export NODE_ICU_DATA="${NODE_BASE}/share/icu"
 log_info() { echo "  [✓] $1"; }
 log_warn() { echo "  [!] $1"; }
 log_error() { echo "  [✗] $1"; }
+
+# 安全创建目录 (会在 _oc_fix_opt 修复 /opt 后使用标准路径)
+ensure_mkdir() {
+	local target="$1"
+	[ -d "$target" ] && return 0
+	if ! mkdir -p "$target" 2>/dev/null; then
+		log_error "无法创建目录: $target"
+		log_error "如果安装了 Docker，可能需要手动执行: mount --bind /overlay/upper/opt /opt"
+		return 1
+	fi
+}
 
 # 检测 C 运行时类型 (glibc vs musl)
 detect_libc() {
@@ -184,8 +217,13 @@ download_node() {
 
 	# 解压
 	echo "  正在解压到 ${NODE_BASE}..."
-	rm -rf "$NODE_BASE"
-	mkdir -p "$NODE_BASE"
+	# OverlayFS 兼容: rm -rf 后可能因 whiteout 导致 mkdir 失败
+	# 先尝试常规方式，失败则通过 overlay upper 层操作
+	rm -rf "$NODE_BASE" 2>/dev/null
+	if [ -d /overlay/upper ]; then
+		rm -rf "/overlay/upper${NODE_BASE}" 2>/dev/null
+	fi
+	ensure_mkdir "$NODE_BASE"
 	tar xf "$tmp_file" -C "$NODE_BASE" --strip-components=1
 	rm -f "$tmp_file"
 
@@ -210,7 +248,7 @@ install_pnpm() {
 	fi
 
 	# 使用 npm 安装 pnpm 到全局目录
-	mkdir -p "$OC_GLOBAL"
+	ensure_mkdir "$OC_GLOBAL"
 	"$NPM_BIN" install -g pnpm --prefix="$OC_GLOBAL" 2>/dev/null
 
 	if [ -x "$OC_GLOBAL/bin/pnpm" ]; then
@@ -264,7 +302,7 @@ install_openclaw() {
 	# 优先用 npm 安装 (pnpm 在 musl 上全局安装可能有路径问题)
 	local npm_ok=0
 	if [ -x "$NPM_BIN" ]; then
-		mkdir -p "$OC_GLOBAL"
+		ensure_mkdir "$OC_GLOBAL"
 		"$NPM_BIN" install -g "$oc_pkg" --prefix="$OC_GLOBAL" $install_flags 2>&1 | tail -10
 		# 检查是否安装成功
 		if [ -n "$(find_oc_entry)" ]; then
@@ -275,7 +313,7 @@ install_openclaw() {
 			[ -n "$(find_oc_entry)" ] && npm_ok=1
 		fi
 	elif [ -x "$PNPM_BIN" ]; then
-		mkdir -p "$OC_GLOBAL"
+		ensure_mkdir "$OC_GLOBAL"
 		"$PNPM_BIN" install -g "$oc_pkg" --prefix="$OC_GLOBAL" 2>&1 | tail -5
 	else
 		log_error "npm 和 pnpm 均不可用"
@@ -315,7 +353,7 @@ init_openclaw() {
 	echo "=== 初始化 OpenClaw ==="
 
 	# 创建数据目录
-	mkdir -p "$OC_DATA/.openclaw"
+	ensure_mkdir "$OC_DATA/.openclaw"
 
 	# 运行 onboard
 	local oc_entry=""
@@ -516,7 +554,7 @@ do_factory_reset() {
 	if [ -f "$config_file" ]; then
 		local backup_dir="${config_dir}/backups"
 		local backup_ts=$(date +%Y%m%d_%H%M%S)
-		mkdir -p "$backup_dir"
+		ensure_mkdir "$backup_dir"
 		cp "$config_file" "${backup_dir}/openclaw_${backup_ts}.json"
 		log_info "备份已保存: backups/openclaw_${backup_ts}.json"
 	fi

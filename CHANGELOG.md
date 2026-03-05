@@ -4,6 +4,18 @@
 
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
 
+## [1.0.6] - 2026-03-06
+
+### 修复 Docker 环境下安装失败 "mkdir: can't create directory: Directory not empty"
+
+#### 修复
+- **OverlayFS 兼容性**: iStoreOS/OpenWrt 安装 Docker 后，Docker 的 bind mount (`/overlay/upper/opt/docker`) 导致 OverlayFS 合并视图中 `/opt` 目录完全不可写，所有 `mkdir`/`touch`/`ln` 操作均报 "Directory not empty"
+  - 新增 `_oc_fix_opt()` 检测函数，自动检测 `/opt` 是否可写
+  - 不可写时自动执行 `mount --bind /overlay/upper/opt /opt` 绕过 OverlayFS 冲突
+  - 三重保障: `uci-defaults` (首次安装)、`init.d` (每次开机)、`openclaw-env` (手动操作) 均包含修复逻辑
+  - 正常系统 (无 Docker) 不受影响，检测到可写后直接跳过
+- **openclaw-env**: 新增 `ensure_mkdir()` 安全目录创建函数，替代所有裸 `mkdir -p` 调用
+
 ## [1.0.5] - 2026-03-05
 
 ### 修复配置管理页面 "spawn script ENOENT" 启动失败 (#3, #4)

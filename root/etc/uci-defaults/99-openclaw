@@ -25,6 +25,16 @@ if ! id openclaw >/dev/null 2>&1; then
 fi
 
 # 创建数据目录
+# ── OverlayFS 兼容: Docker bind mount 可能导致 /opt 不可写 ──
+if ! mkdir -p /opt/openclaw/.probe 2>/dev/null; then
+	if [ -d /overlay/upper/opt ]; then
+		mkdir -p /overlay/upper/opt/openclaw 2>/dev/null
+		mount --bind /overlay/upper/opt /opt 2>/dev/null
+	fi
+	rmdir /opt/openclaw/.probe 2>/dev/null
+else
+	rmdir /opt/openclaw/.probe 2>/dev/null
+fi
 mkdir -p /opt/openclaw/data/.openclaw
 mkdir -p /opt/openclaw/node
 mkdir -p /opt/openclaw/global
