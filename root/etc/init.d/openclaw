@@ -384,6 +384,8 @@ local mins=$(( (uptime % 3600) / 60 ))
 echo "运行时间: ${hours}小时 ${mins}分钟"
 fi
 fi
+elif pgrep -f "openclaw.*gateway" >/dev/null 2>&1; then
+echo "网关:     正在启动 (首次启动可能需要 2~5 分钟)"
 else
 echo "网关:     已停止"
 fi

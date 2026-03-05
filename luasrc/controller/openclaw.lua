@@ -87,6 +87,7 @@ function action_status()
 		port = port,
 		pty_port = pty_port,
 		gateway_running = false,
+		gateway_starting = false,
 		pty_running = false,
 		pid = "",
 		memory_kb = 0,
@@ -121,6 +122,14 @@ function action_status()
 	-- 网关端口检查
 	local gw_check = sys.exec("netstat -tlnp 2>/dev/null | grep -c ':" .. port .. " ' || echo 0"):gsub("%s+", "")
 	result.gateway_running = (tonumber(gw_check) or 0) > 0
+
+	-- 如果端口未监听但 procd 进程存在，说明正在启动中 (gateway 初始化需要数分钟)
+	if not result.gateway_running and enabled == "1" then
+		local procd_pid = sys.exec("pgrep -f 'openclaw.*gateway' 2>/dev/null | head -1"):gsub("%s+", "")
+		if procd_pid ~= "" then
+			result.gateway_starting = true
+		end
+	end
 
 	-- PTY 端口检查
 	local pty_check = sys.exec("netstat -tlnp 2>/dev/null | grep -c ':" .. pty_port .. " ' || echo 0"):gsub("%s+", "")
