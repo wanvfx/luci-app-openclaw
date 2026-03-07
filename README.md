@@ -16,8 +16,8 @@
 | 架构 | x86_64 或 aarch64 (ARM64) |
 | C 库 | glibc 或 musl（自动检测） |
 | 依赖 | luci-compat, luci-base, curl, openssl-util |
-| 存储 | 1.5GB 以上可用空间 |
-| 内存 | 推荐 2GB 及以上 |
+| 存储 | **1.5GB 以上可用空间** |
+| 内存 | 推荐 1GB 及以上 |
 
 ### 🖥️ 兼容性矩阵
 
@@ -142,63 +142,6 @@ rm -f /tmp/luci-indexcache /tmp/luci-modulecache/*
 3. 进入「Web 控制台」添加 AI 模型和 API Key
 4. 进入「配置管理」可使用向导配置消息渠道
 
-## ⬆️ 升级
-
-本项目包含两个独立组件，可分别升级，互不影响。
-
-### 升级 OpenClaw 核心程序
-
-OpenClaw 核心是通过 npm 安装的 Node.js 程序，有两种升级方式：
-
-**方式一：通过 LuCI 界面（推荐）**
-
-LuCI → 服务 → OpenClaw → 点击「🔍 检测升级」按钮 → 如有新版本，点击「⬆️ 立即升级」。
-
-升级完成后服务会**自动重启**。
-
-**方式二：通过 SSH 命令行**
-
-```bash
-openclaw-env upgrade
-/etc/init.d/openclaw restart
-```
-
-### 升级 luci-app-openclaw 插件
-
-插件更新**不影响正在运行的 OpenClaw 服务**——只替换 LuCI 界面文件和配置脚本，Gateway 和 Web PTY 进程无需重启。
-
-**方式一：.run 覆盖安装**
-
-```bash
-wget https://github.com/10000ge10000/luci-app-openclaw/releases/latest/download/luci-app-openclaw.run
-sh luci-app-openclaw.run
-```
-
-**方式二：.ipk 覆盖安装**
-
-```bash
-wget https://github.com/10000ge10000/luci-app-openclaw/releases/latest/download/luci-app-openclaw.ipk
-opkg install --force-reinstall luci-app-openclaw.ipk
-```
-
-**方式三：手动覆盖文件**
-
-```bash
-cd /tmp && git clone --depth 1 https://github.com/10000ge10000/luci-app-openclaw.git
-cd luci-app-openclaw
-cp -r root/* /
-cp luasrc/controller/openclaw.lua /usr/lib/lua/luci/controller/
-cp luasrc/model/cbi/openclaw/*.lua /usr/lib/lua/luci/model/cbi/openclaw/
-cp luasrc/view/openclaw/*.htm /usr/lib/lua/luci/view/openclaw/
-rm -f /tmp/luci-indexcache /tmp/luci-modulecache/*
-rm -rf /tmp/luci-app-openclaw
-```
-
-> **说明**：
-> - `/etc/config/openclaw` 是 conffile，不会被覆盖，现有配置完全保留
-> - 刷新浏览器即可看到新的 LuCI 界面
-> - 如果新版本更新了 `oc-config.sh` 或 `web-pty.js`，在下次进入「配置管理」或重启服务后自动生效
-
 ## 📂 目录结构
 
 ```
@@ -224,38 +167,6 @@ luci-app-openclaw/
 │   └── build_run.sh                  # .run 安装包构建
 └── .github/workflows/build.yml       # GitHub Actions
 ```
-
-## ❓ 常见问题
-
-**安装后 LuCI 菜单没有出现**
-
-```bash
-rm -f /tmp/luci-indexcache /tmp/luci-modulecache/*
-```
-
-刷新浏览器即可。
-
-**提示缺少依赖 luci-compat**
-
-```bash
-opkg update && opkg install luci-compat
-```
-
-**Node.js 下载失败**
-
-网络问题，可指定国内镜像：
-
-```bash
-NODE_MIRROR=https://npmmirror.com/mirrors/node openclaw-env setup
-```
-
-**是否支持 ARM 路由器**
-
-支持 aarch64（ARM64），包括晶晨 S905 系列、Raspberry Pi 4/5、R4S/R5S 等。ARM64 musl 设备使用项目自托管的 Node.js 包，自带完整依赖库，不依赖系统库版本。**不支持** 32 位 ARM（armv7l/armv6l），Node.js 22 没有 32 位预编译包。
-
-**ARM64 设备安装后 Node.js 显示 Segmentation fault**
-
-旧版 OpenWrt（如 22.03）的系统 musl 版本较低，与新版 Node.js 不兼容。请确保使用最新版本的 `openclaw-env`（v1.0.1+），它会自动下载包含独立 musl 链接器的自托管 Node.js 包。
 
 ## 🤝 贡献
 
