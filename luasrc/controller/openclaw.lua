@@ -1,6 +1,39 @@
 -- luci-app-openclaw — LuCI Controller
 module("luci.controller.openclaw", package.seeall)
 
+local function sh_quote(v)
+	v = tostring(v or "")
+	return "'" .. v:gsub("'", "'\\''") .. "'"
+end
+
+local function normalize_storage_path(p)
+	p = tostring(p or ""):gsub("%s+$", ""):gsub("^%s+", "")
+	if p ~= "/" then
+		p = p:gsub("/+$", "")
+	end
+	return p
+end
+
+local function is_allowed_storage_path(p)
+	p = normalize_storage_path(p)
+	if p == "/opt/openclaw" then
+		return true
+	end
+	if p == "" or #p > 220 then
+		return false
+	end
+	if p:find("..", 1, true) then
+		return false
+	end
+	if p:match("[^%w%._%-%+/]") then
+		return false
+	end
+	if p:match("^/mnt/[%w%._%-/]+/openclaw$") or p:match("^/media/[%w%._%-/]+/openclaw$") then
+		return true
+	end
+	return false
+end
+
 -- 公共辅助: 获取 OpenClaw 版本号
 local function get_openclaw_version()
 	local sys = require "luci.sys"
@@ -47,6 +80,12 @@ function index()
 	-- 服务控制 API
 	entry({"admin", "services", "openclaw", "service_ctl"}, call("action_service_ctl"), nil).leaf = true
 
+	-- 存储检测 API (安装前可选外置存储)
+	entry({"admin", "services", "openclaw", "storage_targets"}, call("action_storage_targets"), nil).leaf = true
+
+	-- 保存安装路径 API
+	entry({"admin", "services", "openclaw", "set_storage"}, call("action_set_storage"), nil).leaf = true
+
 	-- 安装/升级日志 API (轮询)
 	entry({"admin", "services", "openclaw", "setup_log"}, call("action_setup_log"), nil).leaf = true
 
@@ -73,6 +112,145 @@ function index()
 end
 
 -- ═══════════════════════════════════════════
+-- 安装存储目标检测 API
+-- ═══════════════════════════════════════════
+function action_storage_targets()
+	local http = require "luci.http"
+	local sys = require "luci.sys"
+	local uci = require "luci.model.uci".cursor()
+
+	local function get_avail_kb(path)
+		local out = sys.exec("df -kP " .. sh_quote(path) .. " 2>/dev/null | awk 'NR==2{print $4}'"):gsub("%s+", "")
+		return tonumber(out) or 0
+	end
+
+	local function is_writable(path)
+		local ok = sys.exec("[ -w " .. sh_quote(path) .. " ] && echo 1 || echo 0"):gsub("%s+", "")
+		return ok == "1"
+	end
+
+	local function fstype_of(path)
+		local fstype = sys.exec("awk '$2==\"" .. path:gsub("\"", "\\\"") .. "\"{print $3; exit}' /proc/mounts 2>/dev/null"):gsub("%s+", "")
+		return fstype ~= "" and fstype or "-"
+	end
+
+	local current = normalize_storage_path(uci:get("openclaw", "main", "storage_path") or "/opt/openclaw")
+	if not is_allowed_storage_path(current) then
+		current = "/opt/openclaw"
+	end
+
+	local options = {}
+	local seen = {}
+
+	local root_avail_mb = math.floor(get_avail_kb("/opt") / 1024)
+	options[#options + 1] = {
+		path = "/opt/openclaw",
+		label = "系统分区 (/opt/openclaw)",
+		mount = "/opt",
+		fs = fstype_of("/overlay") ~= "-" and fstype_of("/overlay") or fstype_of("/"),
+		available_mb = root_avail_mb,
+		recommended = root_avail_mb >= 1536,
+		writable = is_writable("/opt"),
+		external = false,
+	}
+
+	local skip_fs = {
+		overlay = true,
+		tmpfs = true,
+		squashfs = true,
+		proc = true,
+		sysfs = true,
+		devtmpfs = true,
+		devpts = true,
+		cgroup = true,
+		cgroup2 = true,
+		pstore = true,
+		debugfs = true,
+		tracefs = true,
+		securityfs = true,
+		fusectl = true,
+	}
+
+	local mounts = io.open("/proc/mounts", "r")
+	if mounts then
+		for line in mounts:lines() do
+			local dev, mnt, fs = line:match("^(%S+)%s+(%S+)%s+(%S+)%s+")
+			if dev and mnt and fs and not skip_fs[fs] then
+				if (mnt:match("^/mnt/") or mnt:match("^/media/")) and not seen[mnt] then
+					seen[mnt] = true
+					local target = mnt .. "/openclaw"
+					local avail_mb = math.floor(get_avail_kb(mnt) / 1024)
+					options[#options + 1] = {
+						path = target,
+						label = "外置存储 (" .. mnt .. "/openclaw)",
+						mount = mnt,
+						fs = fs,
+						device = dev,
+						available_mb = avail_mb,
+						recommended = avail_mb >= 1536,
+						writable = is_writable(mnt),
+						external = true,
+					}
+				end
+			end
+		end
+		mounts:close()
+	end
+
+	table.sort(options, function(a, b)
+		if a.external ~= b.external then
+			return a.external
+		end
+		return (a.available_mb or 0) > (b.available_mb or 0)
+	end)
+
+	http.prepare_content("application/json")
+	http.write_json({
+		status = "ok",
+		current = current,
+		options = options,
+	})
+end
+
+-- ═══════════════════════════════════════════
+-- 保存安装路径 API
+-- ═══════════════════════════════════════════
+function action_set_storage()
+	local http = require "luci.http"
+	local sys = require "luci.sys"
+	local uci = require "luci.model.uci".cursor()
+
+	local storage_path = normalize_storage_path(http.formvalue("path") or "")
+	if not is_allowed_storage_path(storage_path) then
+		http.prepare_content("application/json")
+		http.write_json({ status = "error", message = "存储路径无效" })
+		return
+	end
+
+	if storage_path ~= "/opt/openclaw" then
+		local mount_point = storage_path:gsub("/openclaw$", "")
+		local mounted = sys.exec("grep -F " .. sh_quote(mount_point) .. " /proc/mounts >/dev/null 2>&1 && echo 1 || echo 0"):gsub("%s+", "")
+		if mounted ~= "1" then
+			http.prepare_content("application/json")
+			http.write_json({ status = "error", message = "外置存储未挂载: " .. mount_point })
+			return
+		end
+		local writable = sys.exec("[ -w " .. sh_quote(mount_point) .. " ] && echo 1 || echo 0"):gsub("%s+", "")
+		if writable ~= "1" then
+			http.prepare_content("application/json")
+			http.write_json({ status = "error", message = "外置存储不可写: " .. mount_point })
+			return
+		end
+	end
+
+	uci:set("openclaw", "main", "storage_path", storage_path)
+	uci:commit("openclaw")
+
+	http.prepare_content("application/json")
+	http.write_json({ status = "ok", path = storage_path, message = "安装路径已保存" })
+end
+
+-- ═══════════════════════════════════════════
 -- 状态查询 API: 返回 JSON
 -- ═══════════════════════════════════════════
 function action_status()
@@ -92,6 +270,7 @@ function action_status()
 		enabled = enabled,
 		port = port,
 		pty_port = pty_port,
+		storage_path = uci:get("openclaw", "main", "storage_path") or "/opt/openclaw",
 		gateway_running = false,
 		gateway_starting = false,
 		pty_running = false,
@@ -212,6 +391,20 @@ function action_service_ctl()
 	elseif action == "setup" then
 		-- 先清理旧日志和状态
 		sys.exec("rm -f /tmp/openclaw-setup.log /tmp/openclaw-setup.pid /tmp/openclaw-setup.exit")
+		-- 检查 openclaw-env 是否存在
+		local env_bin = sys.exec("command -v openclaw-env 2>/dev/null | head -1"):gsub("%s+", "")
+		if env_bin == "" then
+			local f = io.open("/usr/bin/openclaw-env", "r")
+			if f then
+				f:close()
+				env_bin = "/usr/bin/openclaw-env"
+			end
+		end
+		if env_bin == "" then
+			http.prepare_content("application/json")
+			http.write_json({ status = "error", message = "未找到 openclaw-env，请重新安装插件后重试。" })
+			return
+		end
 		-- 获取用户选择的版本 (stable=指定版本, latest=最新版)
 		local version = http.formvalue("version") or ""
 		local env_prefix = ""
@@ -227,9 +420,39 @@ function action_service_ctl()
 				env_prefix = "OC_VERSION=" .. version .. " "
 			end
 		end
+		-- 存储路径选择 (默认 /opt/openclaw，可选 /mnt/*/openclaw)
+		local storage_path = normalize_storage_path(http.formvalue("storage_path") or "")
+		if storage_path == "" then
+			storage_path = normalize_storage_path(require("luci.model.uci").cursor():get("openclaw", "main", "storage_path") or "/opt/openclaw")
+		end
+		if not is_allowed_storage_path(storage_path) then
+			http.prepare_content("application/json")
+			http.write_json({ status = "error", message = "存储路径无效: " .. storage_path })
+			return
+		end
+
+		local storage_cmd = ""
+		if storage_path == "/opt/openclaw" then
+			storage_cmd = "uci set openclaw.main.storage_path='/opt/openclaw'; uci commit openclaw 2>/dev/null; " ..
+				"if [ -L /opt/openclaw ]; then SRC=$(readlink /opt/openclaw 2>/dev/null || true); rm -f /opt/openclaw; mkdir -p /opt/openclaw; [ -n \"$SRC\" ] && [ -d \"$SRC\" ] && cp -a \"$SRC\"/. /opt/openclaw/ 2>/dev/null || true; fi; "
+		else
+			local mount_point = storage_path:gsub("/openclaw$", "")
+			local q_storage = sh_quote(storage_path)
+			local q_mount = sh_quote(mount_point)
+			storage_cmd =
+				"echo '安装存储路径: " .. storage_path .. "' >> /tmp/openclaw-setup.log; " ..
+				"grep -F " .. q_mount .. " /proc/mounts >/dev/null 2>&1 || { echo '错误: 外置存储未挂载: " .. mount_point .. "' >> /tmp/openclaw-setup.log; exit 3; }; " ..
+				"[ -w " .. q_mount .. " ] || { echo '错误: 外置存储不可写: " .. mount_point .. "' >> /tmp/openclaw-setup.log; exit 4; }; " ..
+				"mkdir -p " .. q_storage .. " 2>/dev/null || { echo '错误: 无法创建目录: " .. storage_path .. "' >> /tmp/openclaw-setup.log; exit 5; }; " ..
+				"if [ -L /opt/openclaw ]; then CUR=$(readlink /opt/openclaw 2>/dev/null || true); [ \"$CUR\" != " .. q_storage .. " ] && { rm -f /opt/openclaw; ln -s " .. q_storage .. " /opt/openclaw; }; " ..
+				"elif [ -d /opt/openclaw ]; then [ \"$(ls -A /opt/openclaw 2>/dev/null)\" != \"\" ] && cp -a /opt/openclaw/. " .. q_storage .. "/ 2>/dev/null || true; rm -rf /opt/openclaw; ln -s " .. q_storage .. " /opt/openclaw; " ..
+				"else rm -rf /opt/openclaw 2>/dev/null; ln -s " .. q_storage .. " /opt/openclaw; fi; " ..
+				"uci set openclaw.main.storage_path=" .. q_storage .. "; uci commit openclaw 2>/dev/null; "
+		end
+
 		-- 后台安装，成功后自动启用并启动服务
 		-- 注: openclaw-env 脚本有 set -e，init_openclaw 中的非关键失败不应阻止启动
-		sys.exec("( " .. env_prefix .. "/usr/bin/openclaw-env setup > /tmp/openclaw-setup.log 2>&1; RC=$?; echo $RC > /tmp/openclaw-setup.exit; if [ $RC -eq 0 ]; then uci set openclaw.main.enabled=1; uci commit openclaw; /etc/init.d/openclaw enable 2>/dev/null; sleep 1; /etc/init.d/openclaw start >> /tmp/openclaw-setup.log 2>&1; fi ) & echo $! > /tmp/openclaw-setup.pid")
+		sys.exec("( " .. storage_cmd .. env_prefix .. "sh " .. sh_quote(env_bin) .. " setup > /tmp/openclaw-setup.log 2>&1; RC=$?; echo $RC > /tmp/openclaw-setup.exit; if [ $RC -eq 0 ]; then uci set openclaw.main.enabled=1; uci commit openclaw; /etc/init.d/openclaw enable 2>/dev/null; sleep 1; /etc/init.d/openclaw start >> /tmp/openclaw-setup.log 2>&1; fi ) & echo $! > /tmp/openclaw-setup.pid")
 		http.prepare_content("application/json")
 		http.write_json({ status = "ok", message = "安装已启动，请查看安装日志..." })
 		return
@@ -367,7 +590,7 @@ function action_do_update()
 	sys.exec("rm -f /tmp/openclaw-upgrade.log /tmp/openclaw-upgrade.pid /tmp/openclaw-upgrade.exit")
 
 	-- 后台执行升级，升级完成后自动重启服务
-	sys.exec("( /usr/bin/openclaw-env upgrade > /tmp/openclaw-upgrade.log 2>&1; RC=$?; echo $RC > /tmp/openclaw-upgrade.exit; if [ $RC -eq 0 ]; then echo '' >> /tmp/openclaw-upgrade.log; echo '正在重启服务...' >> /tmp/openclaw-upgrade.log; /etc/init.d/openclaw restart >> /tmp/openclaw-upgrade.log 2>&1; echo '  [✓] 服务已重启' >> /tmp/openclaw-upgrade.log; fi ) & echo $! > /tmp/openclaw-upgrade.pid")
+	sys.exec("( sh /usr/bin/openclaw-env upgrade > /tmp/openclaw-upgrade.log 2>&1; RC=$?; echo $RC > /tmp/openclaw-upgrade.exit; if [ $RC -eq 0 ]; then echo '' >> /tmp/openclaw-upgrade.log; echo '正在重启服务...' >> /tmp/openclaw-upgrade.log; /etc/init.d/openclaw restart >> /tmp/openclaw-upgrade.log 2>&1; echo '  [✓] 服务已重启' >> /tmp/openclaw-upgrade.log; fi ) & echo $! > /tmp/openclaw-upgrade.pid")
 
 	http.prepare_content("application/json")
 	http.write_json({

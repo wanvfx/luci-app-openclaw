@@ -138,6 +138,10 @@ rm -f /tmp/luci-indexcache /tmp/luci-modulecache/*
 ## 🔰 首次使用
 
 1. 打开 LuCI → 服务 → OpenClaw，点击「安装运行环境」
+	 - 安装弹窗支持选择存储路径：
+		 - 系统分区：`/opt/openclaw`
+		 - 外置存储：自动识别 `/mnt/*`、`/media/*` 挂载点并提供选项
+	 - 选择外置存储后会自动创建软链接：`/opt/openclaw -> 外置存储/openclaw`
 2. 安装完成后服务会自动启动，点击「刷新页面」查看状态
 3. 进入「Web 控制台」添加 AI 模型和 API Key
 4. 进入「配置管理」可使用向导配置消息渠道

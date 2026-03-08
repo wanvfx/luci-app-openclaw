@@ -29,6 +29,13 @@ trap "rm -rf '$STAGING'" EXIT
 install_files() {
 	local dest="$1"
 
+	# 统一换行符为 LF，避免 Windows CRLF 导致 BusyBox ash 报错
+	normalize_lf() {
+		find "$1" -type f \( -name "*.sh" -o -name "*.lua" -o -name "*.htm" -o -name "*.js" -o -name "openclaw" -o -name "openclaw-env" -o -name "99-openclaw" \) | while read -r f; do
+			sed -i 's/\r$//' "$f" 2>/dev/null || true
+		done
+	}
+
 	# UCI config (仅首次安装时部署默认配置; 升级时保留用户配置)
 	# 安装器会在解压后检测并跳过已有配置, 见 install.sh 中的逻辑
 	mkdir -p "$dest/etc/config"
@@ -70,6 +77,9 @@ install_files() {
 
 	# Web PTY UI (recursive copy)
 	cp -r "$PKG_DIR/root/usr/share/openclaw/ui" "$dest/usr/share/openclaw/"
+
+	# 处理文本文件换行符
+	normalize_lf "$dest"
 }
 
 # 创建安装器脚本头部

@@ -27,6 +27,55 @@ _oc_fix_opt() {
 }
 _oc_fix_opt
 
+# ── 应用用户选择的存储路径 (/mnt|/media) ──
+_oc_apply_storage_path() {
+	local target
+	target=$(uci -q get openclaw.main.storage_path || echo "/opt/openclaw")
+	target="${target%/}"
+	[ -n "$target" ] || target="/opt/openclaw"
+
+	[ "$target" = "/opt/openclaw" ] && return 0
+	case "$target" in
+		/mnt/*/openclaw|/media/*/openclaw) ;;
+		*)
+			logger -t openclaw "Invalid storage_path in UCI: $target, fallback to /opt/openclaw"
+			return 0
+			;;
+	esac
+
+	local mount_point
+	mount_point="${target%/openclaw}"
+	[ -d "$mount_point" ] || {
+		logger -t openclaw "Storage mount not available: $mount_point, fallback to /opt/openclaw"
+		return 0
+	}
+	[ -w "$mount_point" ] || {
+		logger -t openclaw "Storage mount not writable: $mount_point, fallback to /opt/openclaw"
+		return 0
+	}
+
+	mkdir -p "$target" 2>/dev/null || true
+
+	if [ -L /opt/openclaw ]; then
+		local cur
+		cur=$(readlink /opt/openclaw 2>/dev/null || echo "")
+		[ "$cur" = "$target" ] && return 0
+		rm -f /opt/openclaw 2>/dev/null || return 0
+		ln -s "$target" /opt/openclaw 2>/dev/null || true
+		return 0
+	fi
+
+	if [ -d /opt/openclaw ]; then
+		if [ -n "$(ls -A /opt/openclaw 2>/dev/null)" ]; then
+			cp -a /opt/openclaw/. "$target"/ 2>/dev/null || true
+		fi
+		rm -rf /opt/openclaw 2>/dev/null || return 0
+	fi
+
+	ln -s "$target" /opt/openclaw 2>/dev/null || true
+}
+_oc_apply_storage_path
+
 NODE_BIN="${NODE_BASE}/bin/node"
 CONFIG_FILE="${OC_DATA}/.openclaw/openclaw.json"
 
@@ -329,7 +378,7 @@ start
 
 setup() {
 echo "正在调用 openclaw-env setup..."
-/usr/bin/openclaw-env setup
+sh /usr/bin/openclaw-env setup
 }
 
 restart_gateway() {

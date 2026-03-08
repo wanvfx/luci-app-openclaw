@@ -10,7 +10,52 @@ m.pageaction = false
 -- ═══════════════════════════════════════════
 -- 状态面板
 -- ═══════════════════════════════════════════
-m:section(SimpleSection).template = "openclaw/status"
+s1 = m:section(SimpleSection, nil)
+s1.template = "cbi/nullsection"
+
+status = s1:option(DummyValue, "_status_panel")
+status.rawhtml = true
+status.cfgvalue = function(self, section)
+	local status_url = luci.dispatcher.build_url("admin", "services", "openclaw", "status_api")
+	local html = {}
+	html[#html+1] = '<style type="text/css">'
+	html[#html+1] = '#oc-status-panel{margin:0 0 20px 0;padding:0;border:1px solid #e0e0e0;border-radius:8px;background:#fff;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.06);}';
+	html[#html+1] = '#oc-status-panel .panel-title{background:linear-gradient(135deg,#4a90d9,#357abd);color:#fff;padding:10px 16px;font-size:14px;font-weight:600;letter-spacing:.5px;}';
+	html[#html+1] = '#oc-status-panel table{width:100%;border-collapse:collapse;}';
+	html[#html+1] = '#oc-status-panel td{padding:8px 16px;border-bottom:1px solid #f2f2f2;font-size:13px;vertical-align:middle;}';
+	html[#html+1] = '#oc-status-panel tr:last-child td{border-bottom:none;}';
+	html[#html+1] = '#oc-status-panel td:first-child{width:120px;color:#888;font-weight:500;white-space:nowrap;}';
+	html[#html+1] = '#oc-status-panel td:last-child{color:#333;}';
+	html[#html+1] = '.oc-badge{display:inline-block;padding:2px 12px;border-radius:12px;font-size:12px;font-weight:600;}';
+	html[#html+1] = '.oc-badge-running{background:#e6f7e9;color:#1a7f37;}.oc-badge-stopped{background:#ffeef0;color:#cf222e;}.oc-badge-starting{background:#fff8c5;color:#9a6700;}.oc-badge-disabled{background:#f0f0f0;color:#656d76;}.oc-badge-unknown{background:#fff8c5;color:#9a6700;}';
+	html[#html+1] = '.oc-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;}.oc-dot-green{background:#1a7f37;}.oc-dot-red{background:#cf222e;}.oc-dot-gray{background:#999;}';
+	html[#html+1] = '</style>'
+	html[#html+1] = '<div id="oc-status-panel"><div class="panel-title">🦞 OpenClaw 服务状态</div><div class="panel-body"><table>'
+	html[#html+1] = '<tr><td>运行状态</td><td id="oc-st-status"><span class="oc-badge oc-badge-unknown">加载中...</span></td></tr>'
+	html[#html+1] = '<tr><td>网关服务</td><td id="oc-st-gateway">-</td></tr>'
+	html[#html+1] = '<tr><td>配置终端</td><td id="oc-st-pty">-</td></tr>'
+	html[#html+1] = '<tr><td>活跃模型</td><td id="oc-st-model">-</td></tr>'
+	html[#html+1] = '<tr><td>进程 PID</td><td id="oc-st-pid">-</td></tr>'
+	html[#html+1] = '<tr><td>内存占用</td><td id="oc-st-mem">-</td></tr>'
+	html[#html+1] = '<tr><td>运行时间</td><td id="oc-st-uptime">-</td></tr>'
+	html[#html+1] = '<tr><td>Node.js</td><td id="oc-st-node">-</td></tr>'
+	html[#html+1] = '<tr><td>安装路径</td><td id="oc-st-storage">-</td></tr>'
+	html[#html+1] = '<tr><td>OpenClaw</td><td id="oc-st-ocver">-</td></tr>'
+	html[#html+1] = '<tr><td>插件版本</td><td id="oc-st-plugin">-</td></tr>'
+	html[#html+1] = '</table></div></div>'
+	html[#html+1] = '<script type="text/javascript">'
+	html[#html+1] = '(function(){var statusUrl="' .. status_url .. '";'
+	html[#html+1] = 'function updateStatus(){(new XHR()).get(statusUrl,null,function(x){try{var d=JSON.parse(x.responseText);'
+	html[#html+1] = 'var stEl=document.getElementById("oc-st-status");if(d.enabled!=="1"){stEl.innerHTML="<span class=\\"oc-badge oc-badge-disabled\\">已禁用</span>";}else if(d.gateway_running){stEl.innerHTML="<span class=\\"oc-badge oc-badge-running\\">运行中</span>";}else if(d.gateway_starting){stEl.innerHTML="<span class=\\"oc-badge oc-badge-starting\\">⏳ 正在启动...</span>";}else{stEl.innerHTML="<span class=\\"oc-badge oc-badge-stopped\\">已停止</span>";}'
+	html[#html+1] = 'var gwEl=document.getElementById("oc-st-gateway");if(d.gateway_running){gwEl.innerHTML="<span class=\\"oc-dot oc-dot-green\\"></span>监听中 :"+d.port;}else if(d.gateway_starting){gwEl.innerHTML="<span class=\\"oc-dot oc-dot-gray\\"></span>初始化中，首次启动可能需要 2~5 分钟...";}else{gwEl.innerHTML="<span class=\\"oc-dot oc-dot-red\\"></span>未监听";}'
+	html[#html+1] = 'var ptyEl=document.getElementById("oc-st-pty");if(d.pty_running){ptyEl.innerHTML="<span class=\\"oc-dot oc-dot-green\\"></span>监听中 :"+d.pty_port;}else{ptyEl.innerHTML="<span class=\\"oc-dot oc-dot-gray\\"></span>未监听";}'
+	html[#html+1] = 'document.getElementById("oc-st-pid").textContent=d.pid||"-";var modelEl=document.getElementById("oc-st-model");if(d.active_model){modelEl.innerHTML="<code style=\\"padding:2px 8px;background:#f0f3f6;border-radius:4px;font-size:12px;\\">"+d.active_model+"</code>";}else{modelEl.textContent="未配置";}'
+	html[#html+1] = 'var memEl=document.getElementById("oc-st-mem");if(d.memory_kb>0){memEl.textContent=(d.memory_kb/1024).toFixed(1)+" MB";}else{memEl.textContent="-";}'
+	html[#html+1] = 'document.getElementById("oc-st-uptime").textContent=d.uptime||"-";document.getElementById("oc-st-node").textContent=d.node_version||"未安装";document.getElementById("oc-st-storage").textContent=d.storage_path||"/opt/openclaw";document.getElementById("oc-st-ocver").textContent=d.openclaw_version||"未安装";document.getElementById("oc-st-plugin").textContent=d.plugin_version?("v"+d.plugin_version):"-";'
+	html[#html+1] = '}catch(e){var xel=document.getElementById("oc-st-status");if(xel)xel.innerHTML="<span class=\\"oc-badge oc-badge-unknown\\">查询失败</span>";}});}updateStatus();setInterval(updateStatus,5000);}());'
+	html[#html+1] = '</script>'
+	return table.concat(html, "\n")
+end
 
 -- ═══════════════════════════════════════════
 -- 快捷操作
@@ -27,8 +72,10 @@ act.cfgvalue = function(self, section)
 	local update_url = luci.dispatcher.build_url("admin", "services", "openclaw", "do_update")
 	local upgrade_log_url = luci.dispatcher.build_url("admin", "services", "openclaw", "upgrade_log")
 	local uninstall_url = luci.dispatcher.build_url("admin", "services", "openclaw", "uninstall")
+	local set_storage_url = luci.dispatcher.build_url("admin", "services", "openclaw", "set_storage")
 	local plugin_upgrade_url = luci.dispatcher.build_url("admin", "services", "openclaw", "plugin_upgrade")
 	local plugin_upgrade_log_url = luci.dispatcher.build_url("admin", "services", "openclaw", "plugin_upgrade_log")
+	local storage_url = luci.dispatcher.build_url("admin", "services", "openclaw", "storage_targets")
 	local html = {}
 
 	-- 按钮区域
@@ -41,6 +88,12 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = '</div>'
 	html[#html+1] = '<div id="action-result" style="margin-top:8px;"></div>'
 	html[#html+1] = '<div id="oc-update-action" style="margin-top:8px;display:none;"></div>'
+	html[#html+1] = '<div style="margin-top:10px;padding:10px 12px;border:1px solid #d8dee4;border-radius:6px;background:#fafbfc;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+	html[#html+1] = '<span style="font-size:13px;color:#444;font-weight:600;">安装路径：</span>'
+	html[#html+1] = '<select id="oc-storage-select-main" style="min-width:280px;padding:6px 8px;border:1px solid #d0d7de;border-radius:4px;background:#fff;"><option value="/opt/openclaw">/opt/openclaw</option></select>'
+	html[#html+1] = '<button class="btn cbi-button cbi-button-action" type="button" onclick="ocSaveStoragePath()" id="btn-save-storage">💾 保存路径</button>'
+	html[#html+1] = '<span id="oc-storage-main-tip" style="font-size:12px;color:#666;"></span>'
+	html[#html+1] = '</div>'
 
 	-- 版本选择对话框 (默认隐藏)
 	html[#html+1] = '<div id="oc-setup-dialog" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:10000;align-items:center;justify-content:center;">'
@@ -82,11 +135,71 @@ act.cfgvalue = function(self, section)
 
 	-- 版本选择对话框逻辑
 	html[#html+1] = 'var _setupTimer=null;'
+	html[#html+1] = 'var _storageLoaded=false;'
+	html[#html+1] = 'var _storageCurrent="/opt/openclaw";'
+	html[#html+1] = 'var _storageOptions=[];'
+	html[#html+1] = 'function ocPopulateStorageSelect(sel, current){'
+	html[#html+1] = 'if(!sel)return;sel.innerHTML="";'
+	html[#html+1] = 'for(var i=0;i<_storageOptions.length;i++){var o=_storageOptions[i];var op=document.createElement("option");op.value=o.path;op.textContent=o.label+" (可用 "+(o.available_mb||0)+"MB"+(o.recommended?"，推荐":"")+")";op.setAttribute("data-external",o.external?"1":"0");op.setAttribute("data-writable",o.writable?"1":"0");op.setAttribute("data-mb",String(o.available_mb||0));op.setAttribute("data-fs",o.fs||"-");sel.appendChild(op);}';
+	html[#html+1] = 'if(current)sel.value=current;'
+	html[#html+1] = 'if(!sel.value&&sel.options.length>0)sel.selectedIndex=0;'
+	html[#html+1] = '}'
+	html[#html+1] = 'function ocUpdateStorageHint(){'
+	html[#html+1] = 'var sel=document.getElementById("oc-storage-select-main")||document.getElementById("oc-storage-select");'
+	html[#html+1] = 'var hint=document.getElementById("oc-storage-main-tip")||document.getElementById("oc-storage-hint");'
+	html[#html+1] = 'if(!sel||!hint)return;'
+	html[#html+1] = 'var opt=sel.options[sel.selectedIndex];'
+	html[#html+1] = 'if(!opt){hint.textContent="";return;}'
+	html[#html+1] = 'var ext=opt.getAttribute("data-external")==="1";'
+	html[#html+1] = 'var writable=opt.getAttribute("data-writable")==="1";'
+	html[#html+1] = 'var mb=parseInt(opt.getAttribute("data-mb")||"0",10);'
+	html[#html+1] = 'var fs=opt.getAttribute("data-fs")||"-";'
+	html[#html+1] = 'var tip=(ext?"外置存储":"系统分区")+" · 文件系统: "+fs+" · 可用空间: "+mb+" MB";'
+	html[#html+1] = 'if(!writable)tip=tip+" · ⚠️ 不可写";'
+	html[#html+1] = 'if(ext)tip=tip+" · 安装时会自动创建 /opt/openclaw → 外置存储 的软链接。";'
+	html[#html+1] = 'hint.textContent=tip;'
+	html[#html+1] = '}'
+	html[#html+1] = 'function ocLoadStorageTargets(cb){'
+	html[#html+1] = 'var sel=document.getElementById("oc-storage-select");'
+	html[#html+1] = 'var mainSel=document.getElementById("oc-storage-select-main");'
+	html[#html+1] = 'if(!sel&&!mainSel){if(cb)cb();return;}'
+	html[#html+1] = '(new XHR()).get("' .. storage_url .. '",null,function(x){'
+	html[#html+1] = 'try{'
+	html[#html+1] = 'var r=JSON.parse(x.responseText);'
+	html[#html+1] = 'if(r&&r.status==="ok"&&r.options&&r.options.length){'
+	html[#html+1] = 'var keep=_storageCurrent;'
+	html[#html+1] = 'if(!keep&&mainSel&&mainSel.value)keep=mainSel.value;'
+	html[#html+1] = 'if(!keep&&sel&&sel.value)keep=sel.value;'
+	html[#html+1] = 'if(!keep)keep="/opt/openclaw";'
+	html[#html+1] = '_storageOptions=r.options;'
+	html[#html+1] = '_storageCurrent=r.current||keep;'
+	html[#html+1] = 'ocPopulateStorageSelect(sel,_storageCurrent);'
+	html[#html+1] = 'ocPopulateStorageSelect(mainSel,_storageCurrent);'
+	html[#html+1] = '_storageLoaded=true;'
+	html[#html+1] = 'ocUpdateStorageHint();'
+	html[#html+1] = '}'
+	html[#html+1] = '}catch(e){}'
+	html[#html+1] = 'if(cb)cb();'
+	html[#html+1] = '});'
+	html[#html+1] = '}'
+	html[#html+1] = 'function ocSaveStoragePath(){'
+	html[#html+1] = 'var btn=document.getElementById("btn-save-storage");'
+	html[#html+1] = 'var sel=document.getElementById("oc-storage-select-main");'
+	html[#html+1] = 'var el=document.getElementById("action-result");'
+	html[#html+1] = 'if(!sel){return;}'
+	html[#html+1] = 'var p=sel.value||"/opt/openclaw";'
+	html[#html+1] = 'btn.disabled=true;btn.textContent="⏳ 保存中...";'
+	html[#html+1] = '(new XHR()).get("' .. set_storage_url .. '?path="+encodeURIComponent(p),null,function(x){'
+	html[#html+1] = 'btn.disabled=false;btn.textContent="💾 保存路径";'
+	html[#html+1] = 'try{var r=JSON.parse(x.responseText);if(r.status==="ok"){_storageCurrent=r.path||p;el.innerHTML="<span style=\\"color:green\\">✅ 安装路径已保存: "+_storageCurrent+"</span>";var dlgSel=document.getElementById("oc-storage-select");if(dlgSel){dlgSel.value=_storageCurrent;}ocUpdateStorageHint();}else{el.innerHTML="<span style=\\"color:red\\">❌ "+(r.message||"保存失败")+"</span>";}}catch(e){el.innerHTML="<span style=\\"color:red\\">❌ 保存失败</span>";}'
+	html[#html+1] = '});'
+	html[#html+1] = '}'
 	html[#html+1] = 'function ocShowSetupDialog(){'
 	html[#html+1] = 'var dlg=document.getElementById("oc-setup-dialog");'
 	html[#html+1] = 'dlg.style.display="flex";'
 	html[#html+1] = 'var radios=document.getElementsByName("oc-ver-choice");'
 	html[#html+1] = 'for(var i=0;i<radios.length;i++){if(radios[i].value==="stable")radios[i].checked=true;}'
+	html[#html+1] = 'var mainSel=document.getElementById("oc-storage-select-main");if(mainSel&&mainSel.value){_storageCurrent=mainSel.value;}'
 	html[#html+1] = '}'
 	html[#html+1] = 'function ocCloseSetupDialog(){'
 	html[#html+1] = 'document.getElementById("oc-setup-dialog").style.display="none";'
@@ -97,11 +210,13 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'var choice="stable";'
 	html[#html+1] = 'for(var i=0;i<radios.length;i++){if(radios[i].checked){choice=radios[i].value;break;}}'
 	html[#html+1] = 'var verParam=(choice==="stable")?"stable":"latest";'
-	html[#html+1] = 'ocSetup(verParam);'
+	html[#html+1] = 'var mainSel=document.getElementById("oc-storage-select-main");'
+	html[#html+1] = 'var storage=(mainSel&&mainSel.value)?mainSel.value:(_storageCurrent||"/opt/openclaw");'
+	html[#html+1] = 'ocSetup(verParam,storage);'
 	html[#html+1] = '}'
 
 	-- 安装运行环境 (带实时日志)
-	html[#html+1] = 'function ocSetup(version){'
+	html[#html+1] = 'function ocSetup(version,storagePath){'
 	html[#html+1] = 'var btn=document.getElementById("btn-setup");'
 	html[#html+1] = 'var panel=document.getElementById("setup-log-panel");'
 	html[#html+1] = 'var logEl=document.getElementById("setup-log-content");'
@@ -113,11 +228,12 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'actionEl.textContent="";'
 	html[#html+1] = 'panel.style.display="block";'
 	html[#html+1] = 'logEl.textContent="正在启动安装 ("+((version==="stable")?"稳定版":"最新版")+")...\\n";'
+	html[#html+1] = 'if(storagePath&&storagePath!=="/opt/openclaw"){logEl.textContent=logEl.textContent+"安装存储: "+storagePath+"\\n";}'
 	html[#html+1] = 'titleEl.textContent="📋 安装日志";'
 	html[#html+1] = 'statusEl.innerHTML="<span style=\\"color:#7aa2f7;\\">⏳ 安装进行中...</span>";'
 	html[#html+1] = 'resultEl.style.display="none";'
-	html[#html+1] = '(new XHR()).get("' .. ctl_url .. '?action=setup&version="+encodeURIComponent(version),null,function(x){'
-	html[#html+1] = 'try{JSON.parse(x.responseText);}catch(e){}'
+	html[#html+1] = '(new XHR()).get("' .. ctl_url .. '?action=setup&version="+encodeURIComponent(version)+"&storage_path="+encodeURIComponent(storagePath||"/opt/openclaw"),null,function(x){'
+	html[#html+1] = 'try{var r=JSON.parse(x.responseText);if(r.status&&r.status!=="ok"){btn.disabled=false;btn.textContent="📦 安装运行环境";statusEl.innerHTML="<span style=\\"color:#cf222e;\\">❌ 启动失败</span>";resultEl.style.display="block";resultEl.innerHTML="<div style=\\"border:1px solid #f5c6cb;background:#ffeef0;padding:12px 16px;border-radius:6px;\\"><strong style=\\"color:#cf222e;font-size:14px;\\">❌ 无法启动安装</strong><br/><span style=\\"color:#555;font-size:13px;\\">"+(r.message||"未知错误")+"</span></div>";return;}}catch(e){}'
 	html[#html+1] = 'ocPollSetupLog();'
 	html[#html+1] = '});'
 	html[#html+1] = '}'
@@ -179,7 +295,7 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = 'var ll=log.toLowerCase();'
 	-- 网络问题
 	html[#html+1] = 'if(ll.indexOf("could not resolve")>=0||ll.indexOf("connection timed out")>=0||ll.indexOf("curl")>=0&&ll.indexOf("fail")>=0||ll.indexOf("wget")>=0&&ll.indexOf("fail")>=0||ll.indexOf("所有镜像均下载失败")>=0){'
-	html[#html+1] = 'reasons.push("🌐 <b>网络连接失败</b> — 无法下载 Node.js。请检查路由器是否能访问外网。<br/>&nbsp;&nbsp;💡 解决: 检查 DNS 设置和网络连接，或手动指定镜像: <code>NODE_MIRROR=https://npmmirror.com/mirrors/node openclaw-env setup</code>");'
+	html[#html+1] = 'reasons.push("🌐 <b>网络连接失败</b> — 无法下载 Node.js。请检查路由器是否能访问外网。<br/>&nbsp;&nbsp;💡 解决: 检查 DNS 设置和网络连接，或手动指定镜像: <code>NODE_MIRROR=https://npmmirror.com/mirrors/node sh /usr/bin/openclaw-env setup</code>");'
 	html[#html+1] = '}'
 	-- 磁盘空间
 	html[#html+1] = 'if(ll.indexOf("no space")>=0||ll.indexOf("disk full")>=0||ll.indexOf("enospc")>=0){'
@@ -199,15 +315,18 @@ act.cfgvalue = function(self, section)
 	html[#html+1] = '}'
 	-- tar 解压失败
 	html[#html+1] = 'if(ll.indexOf("tar")>=0&&(ll.indexOf("error")>=0||ll.indexOf("fail")>=0)){'
-	html[#html+1] = 'reasons.push("📂 <b>解压失败</b> — Node.js 安装包可能下载不完整。<br/>&nbsp;&nbsp;💡 解决: 删除缓存重试 <code>rm -rf /opt/openclaw/node && openclaw-env setup</code>");'
+	html[#html+1] = 'reasons.push("📂 <b>解压失败</b> — Node.js 安装包可能下载不完整。<br/>&nbsp;&nbsp;💡 解决: 删除缓存重试 <code>rm -rf /opt/openclaw/node && sh /usr/bin/openclaw-env setup</code>");'
 	html[#html+1] = '}'
 	-- 验证失败
 	html[#html+1] = 'if(ll.indexOf("安装验证失败")>=0){'
 	html[#html+1] = 'reasons.push("⚠️ <b>安装验证失败</b> — 程序已下载但无法正常运行。<br/>&nbsp;&nbsp;💡 可能是 glibc/musl 不兼容，请确认系统 C 库类型: <code>ldd --version 2>&1 | head -1</code>");'
 	html[#html+1] = '}'
+	html[#html+1] = 'if(ll.indexOf("openclaw-env")>=0&&ll.indexOf("not found")>=0){'
+	html[#html+1] = 'reasons.push("📦 <b>插件安装不完整</b> — 系统缺少 <code>openclaw-env</code>。<br/>&nbsp;&nbsp;💡 解决: 重新安装插件包，然后刷新 LuCI 缓存后重试。");'
+	html[#html+1] = '}'
 	-- 兜底
 	html[#html+1] = 'if(reasons.length===0){'
-	html[#html+1] = 'reasons.push("⚠️ <b>未识别的错误</b> — 请查看上方完整日志分析具体原因。<br/>&nbsp;&nbsp;💡 您也可以尝试手动执行: <code>openclaw-env setup</code> 查看详细输出。");'
+	html[#html+1] = 'reasons.push("⚠️ <b>未识别的错误</b> — 请查看上方完整日志分析具体原因。<br/>&nbsp;&nbsp;💡 您也可以尝试手动执行: <code>sh /usr/bin/openclaw-env setup</code> 查看详细输出。");'
 	html[#html+1] = '}'
 	html[#html+1] = 'return reasons.join("<br/><br/>");'
 	html[#html+1] = '}'
@@ -435,6 +554,9 @@ act.cfgvalue = function(self, section)
 
 	-- 页面加载时静默检查是否有更新 (仅显示小红点提示)
 	html[#html+1] = '(function(){'
+	html[#html+1] = 'var mainSel=document.getElementById("oc-storage-select-main");'
+	html[#html+1] = 'if(mainSel&&!mainSel.getAttribute("data-bind")){mainSel.setAttribute("data-bind","1");mainSel.onchange=function(){_storageCurrent=this.value;ocUpdateStorageHint();};}'
+	html[#html+1] = 'ocLoadStorageTargets();'
 	html[#html+1] = 'setTimeout(function(){'
 	html[#html+1] = '(new XHR()).get("' .. check_url .. '?quick=1",null,function(x){'
 	html[#html+1] = 'try{var r=JSON.parse(x.responseText);'

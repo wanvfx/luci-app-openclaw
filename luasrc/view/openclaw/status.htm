@@ -1,7 +1,6 @@
-<%#
- luci-app-openclaw — 运行状态面板 (全面汉化 + 界面优化)
--%>
-
+<%
+local status_url = luci.dispatcher.build_url("admin", "services", "openclaw", "status_api")
+local html = [=[
 <style type="text/css">
 #oc-status-panel {
 	margin: 0 0 20px 0;
@@ -75,6 +74,7 @@
 			<tr><td>内存占用</td><td id="oc-st-mem">-</td></tr>
 			<tr><td>运行时间</td><td id="oc-st-uptime">-</td></tr>
 			<tr><td>Node.js</td><td id="oc-st-node">-</td></tr>
+			<tr><td>安装路径</td><td id="oc-st-storage">-</td></tr>
 			<tr><td>OpenClaw</td><td id="oc-st-ocver">-</td></tr>
 			<tr><td>插件版本</td><td id="oc-st-plugin">-</td></tr>
 		</table>
@@ -84,7 +84,7 @@
 <script type="text/javascript">
 //<![CDATA[
 (function() {
-	var statusUrl = '<%=luci.dispatcher.build_url("admin", "services", "openclaw", "status_api")%>';
+	var statusUrl = '__STATUS_URL__';
 
 	function updateStatus() {
 		(new XHR()).get(statusUrl, null, function(x) {
@@ -137,6 +137,7 @@
 
 				document.getElementById('oc-st-uptime').textContent = d.uptime || '-';
 				document.getElementById('oc-st-node').textContent = d.node_version || '未安装';
+				document.getElementById('oc-st-storage').textContent = d.storage_path || '/opt/openclaw';
 				document.getElementById('oc-st-ocver').textContent = d.openclaw_version || '未安装';
 				document.getElementById('oc-st-plugin').textContent = d.plugin_version ? ('v' + d.plugin_version) : '-';
 
@@ -151,3 +152,8 @@
 })();
 //]]>
 </script>
+]=]
+
+html = html:gsub("__STATUS_URL__", status_url)
+write(html)
+%>

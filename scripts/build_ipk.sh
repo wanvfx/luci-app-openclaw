@@ -23,6 +23,13 @@ echo "=== 构建 ${PKG_NAME} .ipk 包 ==="
 STAGING=$(mktemp -d)
 trap "rm -rf '$STAGING'" EXIT
 
+# 统一换行符为 LF，避免 Windows CRLF 导致 BusyBox ash 报错
+normalize_lf_tree() {
+	find "$1" -type f \( -name "*.sh" -o -name "*.lua" -o -name "*.htm" -o -name "*.js" -o -name "openclaw" -o -name "openclaw-env" -o -name "99-openclaw" \) | while read -r f; do
+		sed -i 's/\r$//' "$f" 2>/dev/null || true
+	done
+}
+
 # ── 构建 data.tar.gz ──
 DATA_DIR="$STAGING/data"
 mkdir -p "$DATA_DIR"
@@ -67,6 +74,9 @@ cp "$PKG_DIR/root/usr/share/openclaw/web-pty.js" "$DATA_DIR/usr/share/openclaw/"
 
 # Web PTY UI
 cp -r "$PKG_DIR/root/usr/share/openclaw/ui" "$DATA_DIR/usr/share/openclaw/"
+
+# 处理文本文件换行符
+normalize_lf_tree "$DATA_DIR"
 
 # i18n (po2lmo 可选)
 mkdir -p "$DATA_DIR/usr/lib/lua/luci/i18n"

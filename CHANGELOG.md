@@ -13,6 +13,10 @@
   - Base URL: `https://api.lkeap.cloud.tencent.com/coding/v3`，Provider: `lkeap`
   - 支持全部 8 个套餐模型: tc-code-latest (智能路由)、hunyuan-t1、hunyuan-turbos、hunyuan-2.0-thinking、hunyuan-2.0-instruct、glm-5、kimi-k2.5、minimax-m2.5
   - 按类别分组展示: 智能推荐 / 推理模型 / 旗舰模型 / 第三方模型
+- **安装存储路径选择**: 安装弹窗新增存储路径下拉，自动识别 `/mnt/*`、`/media/*` 外置存储并可一键选择
+  - 选择外置存储时自动创建/维护软链接：`/opt/openclaw -> 外置存储/openclaw`
+  - 安装前自动校验挂载状态和可写性，避免写入到未挂载目录
+  - 新增 UCI 配置项 `openclaw.main.storage_path`，重启后自动恢复所选存储路径
 
 #### 修复
 - **Coding Plan 配置信息修正**: 订阅地址更正为官方页面，移除不必要的 Base URL 显示

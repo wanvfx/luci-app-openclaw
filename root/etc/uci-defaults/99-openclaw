@@ -56,4 +56,19 @@ if [ -z "$CURRENT_PTY_TOKEN" ]; then
 	uci commit openclaw
 fi
 
+# 初始化存储路径 (默认 /opt/openclaw；若当前已是软链接则记录目标)
+CURRENT_STORAGE=$(uci -q get openclaw.main.storage_path)
+if [ -z "$CURRENT_STORAGE" ]; then
+	if [ -L /opt/openclaw ]; then
+		LINK_TARGET=$(readlink /opt/openclaw 2>/dev/null || true)
+		case "$LINK_TARGET" in
+			/mnt/*/openclaw|/media/*/openclaw) uci set openclaw.main.storage_path="$LINK_TARGET" ;;
+			*) uci set openclaw.main.storage_path='/opt/openclaw' ;;
+		esac
+	else
+		uci set openclaw.main.storage_path='/opt/openclaw'
+	fi
+	uci commit openclaw
+fi
+
 exit 0
